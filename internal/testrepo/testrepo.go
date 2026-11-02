@@ -39,6 +39,16 @@ func New(t *testing.T) *Repo {
 	return work
 }
 
+// Clone makes a second clone of r's remote, standing in for another person.
+func Clone(t *testing.T, r *Repo) *Repo {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "clone")
+	if _, err := r.Run("clone", "--quiet", r.Remote.Dir, dir); err != nil {
+		t.Fatal(err)
+	}
+	return &Repo{Repo: git.Repo{Dir: dir}, t: t, Remote: r.Remote}
+}
+
 func isolate(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")

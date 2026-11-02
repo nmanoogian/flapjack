@@ -67,13 +67,16 @@ Adds or removes the trailer on a WIP commit. Marking a head again renames it. fl
 
 For each head (or just the named ones):
 
-1. Stop if the PR branch is checked out in any worktree (`git worktree list --porcelain`).
-2. `git branch -f <wip>_<name> <head-sha>`.
-3. Push every updated branch in one call:
-   `git push --atomic origin --force-with-lease=<branch>:<last-known-remote-sha> <branch>...`
-4. With `gh`: create the PR if it doesn't exist (base = PR base, title and body from the head commit only; no stack list), otherwise retarget it with `gh pr edit --base` if its base changed.
+1. Stop if the PR branch is checked out in any worktree (`git worktree list --porcelain`), or if the head's PR is already merged (run `fj sync`).
+2. `git branch -f <wip>_<name> <head-sha>` for branches whose remote copy differs from the head.
+3. Push those branches in one call:
+   `git push --atomic origin --force-with-lease=refs/heads/<branch>:<last-known-remote-sha> <branch>...`
+   The last-known SHA comes from `refs/remotes/origin/<branch>`, which flapjack never fetches. A branch that was never pushed gets an empty lease, so the push fails if it already exists on the remote.
+4. With `gh`: create the PR if there's no open one (base = PR base, title and body from the head commit only; no stack list), otherwise retarget it with `gh pr edit --base` if its base changed.
 
-`--dry-run` prints the plan and changes nothing.
+When pushing only some heads, each one's PR base must already be on the remote or be pushed in the same run.
+
+`--dry-run` prints the plan and changes nothing. `--draft` creates new PRs as drafts.
 
 flapjack does not run lint, type check or tests. The agent's instructions handle that: check out each head from `fj status --json` before calling `fj push`.
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/nmanoogian/flapjack/internal/desc"
 	"github.com/nmanoogian/flapjack/internal/gh"
 	"github.com/nmanoogian/flapjack/internal/stack"
 )
@@ -193,15 +194,9 @@ func (app *App) updatePRs(items []pushItem, draft bool) error {
 	for _, item := range items {
 		switch {
 		case item.needsPR():
-			msg, err := stack.Message(app.Repo, item.head.SHA)
-			if err != nil {
+			if err := app.createPR(item, draft); err != nil {
 				return err
 			}
-			pr, err := app.GH.Create(item.head.Branch, item.prBase, item.head.Subject, stack.Body(msg), draft)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(app.Out, "created PR #%d %s → %s %s\n", pr.Number, item.head.Branch, item.prBase, pr.URL)
 		case item.needsRetarget():
 			if err := app.GH.SetBase(item.pr.Number, item.prBase); err != nil {
 				return err
@@ -210,4 +205,30 @@ func (app *App) updatePRs(items []pushItem, draft bool) error {
 		}
 	}
 	return nil
+}
+
+// createPR opens a PR using the head's description file if there is one,
+// otherwise the head commit's message, and records the file as synced.
+func (app *App) createPR(item pushItem, draft bool) error {
+	path, err := app.descPath(item.head.Branch)
+	if err != nil {
+		return err
+	}
+	d, err := desc.Read(path)
+	if err != nil {
+		return err
+	}
+	if d == nil {
+		msg, err := stack.Message(app.Repo, item.head.SHA)
+		if err != nil {
+			return err
+		}
+		d = &desc.Description{Title: item.head.Subject, Body: stack.Body(msg)}
+	}
+	pr, err := app.GH.Create(item.head.Branch, item.prBase, desc.Normalize(d.Title), desc.Normalize(d.Body), draft)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(app.Out, "created PR #%d %s → %s %s\n", pr.Number, item.head.Branch, item.prBase, pr.URL)
+	return app.writeSynced(path, remoteDesc(&pr))
 }

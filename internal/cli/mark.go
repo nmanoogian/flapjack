@@ -4,8 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"slices"
 
+	"github.com/nmanoogian/flapjack/internal/desc"
 	"github.com/nmanoogian/flapjack/internal/stack"
 )
 
@@ -65,7 +67,41 @@ func runMark(app *App, args []string) error {
 		return err
 	}
 	fmt.Fprintf(app.Out, "marked %s %s as %s (%s)\n", short(sha), c.Subject, name, stack.BranchName(s.WIP, name))
+	if len(c.Names) == 1 {
+		return app.moveDesc(stack.BranchName(s.WIP, c.Names[0]), stack.BranchName(s.WIP, name))
+	}
 	return nil
+}
+
+// moveDesc carries a renamed head's description file over to its new
+// branch. The old PR is orphaned, so the moved file is unlinked from it and
+// will be used when the new PR is created.
+func (app *App) moveDesc(oldBranch, newBranch string) error {
+	oldPath, err := app.descPath(oldBranch)
+	if err != nil {
+		return err
+	}
+	newPath, err := app.descPath(newBranch)
+	if err != nil {
+		return err
+	}
+	d, err := desc.Read(oldPath)
+	if err != nil || d == nil {
+		return err
+	}
+	if existing, err := desc.Read(newPath); err != nil {
+		return err
+	} else if existing != nil {
+		fmt.Fprintf(app.Out, "kept %s: %s already exists\n", oldPath, newPath)
+		return nil
+	}
+	if err := desc.Write(newPath, &desc.Description{Title: d.Title, Body: d.Body}); err != nil {
+		return err
+	}
+	if err := os.Remove(oldPath); err != nil {
+		return err
+	}
+	return os.RemoveAll(desc.RemotePath(oldPath))
 }
 
 func runUnmark(app *App, args []string) error {

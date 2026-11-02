@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"os"
 
+	"github.com/nmanoogian/flapjack/internal/desc"
 	"github.com/nmanoogian/flapjack/internal/gh"
 	"github.com/nmanoogian/flapjack/internal/stack"
 )
@@ -36,7 +39,7 @@ func runSync(app *App, args []string) error {
 	if len(merged) == 0 {
 		fmt.Fprintln(app.Out, "no merged PRs at the bottom of the stack")
 	} else {
-		if err := app.deleteLocalBranches(merged); err != nil {
+		if err := app.cleanUpMerged(merged); err != nil {
 			return err
 		}
 		top := merged[len(merged)-1]
@@ -77,12 +80,23 @@ func (app *App) mergedHeads(s *stack.Stack) ([]stack.Head, error) {
 	return merged, nil
 }
 
-func (app *App) deleteLocalBranches(heads []stack.Head) error {
+// cleanUpMerged deletes the local branches and description files of
+// merged heads.
+func (app *App) cleanUpMerged(heads []stack.Head) error {
 	checkedOut, err := app.Repo.CheckedOutBranches()
 	if err != nil {
 		return err
 	}
 	for _, h := range heads {
+		path, err := app.descPath(h.Branch)
+		if err != nil {
+			return err
+		}
+		for _, p := range []string{path, desc.RemotePath(path)} {
+			if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 		if path, ok := checkedOut[h.Branch]; ok {
 			fmt.Fprintf(app.Out, "kept %s: checked out in %s\n", h.Branch, path)
 			continue

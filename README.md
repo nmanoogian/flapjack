@@ -37,5 +37,33 @@ fj push
 | `fj unmark <name>` | Removes a head. Its PR is left open and shows as orphaned |
 | `fj push [--dry-run] [--draft] [<name>...]` | Points PR branches at their heads, pushes them atomically with `--force-with-lease`, creates or retargets PRs |
 | `fj sync` | After bottom PRs merge, rebases the WIP branch onto the base without them and retargets the next PR |
+| `fj desc path <name>` | Prints a head's description file, creating it from the open PR or the head commit if needed |
+| `fj desc sync [--dry-run] [--prefer local\|remote] [<name>...]` | Syncs description files with GitHub in both directions |
 
 flapjack doesn't run lint, type checks or tests. Check each head (the `sha` fields in `fj status --json`) before `fj push`.
+
+## PR descriptions
+
+PR titles and descriptions can be edited as files in `.git/flapjack/prs/<branch>.md`, shared by all worktrees:
+
+```markdown
+---
+title: Add billing v3 data models
+pr: 812
+synced: 3f2a9c1e5b7d0a4c
+---
+
+Introduces Plan, Price and Subscription models.
+```
+
+`pr` and `synced` are managed by flapjack; edit the title and body.
+
+```sh
+$EDITOR "$(fj desc path new-models)"   # write or edit a description
+fj desc sync                            # push local edits, pull GitHub edits
+```
+
+- `fj push` creates new PRs from the description file if one exists, otherwise from the head commit's message, and writes the file either way.
+- `fj desc sync` compares each file with its PR and with the version from the last sync. Local edits are pushed, GitHub edits are pulled. If both changed, it writes GitHub's version to `<branch>.remote.md` and stops; rerun with `--prefer local` or `--prefer remote` once you've merged them.
+- `fj push` never updates existing descriptions; that's only `fj desc sync`.
+- Renaming a head with `fj mark` moves its file to the new branch name. `fj sync` deletes files for merged PRs.

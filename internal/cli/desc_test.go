@@ -40,12 +40,20 @@ func TestDescSync(t *testing.T) {
 	mustRun(t, r, fake, "push")
 	pr := &fake.prs[0]
 
-	// No file yet: pull from GitHub.
-	if out := mustRun(t, r, fake, "desc", "sync"); out != "pulled a (#101)\n" {
-		t.Errorf("first sync: %q", out)
-	}
+	// fj push records the description it created the PR with.
 	d, path := readDesc(t, r, "wip_a")
-	if d.Title != "A" || d.Body != "From the commit." || d.PR != 101 {
+	if d == nil || d.Title != "A" || d.Body != "From the commit." || d.PR != 101 || d.Synced != d.Hash() {
+		t.Fatalf("file after push = %+v", d)
+	}
+
+	// No file: pull from GitHub.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if out := mustRun(t, r, fake, "desc", "sync"); out != "pulled a (#101)\n" {
+		t.Errorf("sync without file: %q", out)
+	}
+	if d, _ = readDesc(t, r, "wip_a"); d == nil || d.Title != "A" || d.PR != 101 {
 		t.Errorf("pulled file = %+v", d)
 	}
 
@@ -115,11 +123,51 @@ func TestDescSyncDryRun(t *testing.T) {
 	fake := &fakeGH{}
 	mustRun(t, r, fake, "push", "a")
 
+	fake.prs[0].Body = "Edited on GitHub."
+
 	out := mustRun(t, r, fake, "desc", "sync", "--dry-run")
 	if out != "would pull a (#101)\nskipped b: no open PR\n" {
 		t.Errorf("out = %q", out)
 	}
-	if d, _ := readDesc(t, r, "wip_a"); d != nil {
-		t.Errorf("dry run wrote a file: %+v", d)
+	if d, _ := readDesc(t, r, "wip_a"); d.Body != "" {
+		t.Errorf("dry run changed the file: %+v", d)
+	}
+}
+
+func TestDescPathDraftUsedByPush(t *testing.T) {
+	r := testrepo.New(t)
+	r.Commit("A\n\nCommit body.\n\nFlapjack-Branch: a\n", "a.txt")
+	fake := &fakeGH{}
+
+	path := strings.TrimSpace(mustRun(t, r, fake, "desc", "path", "a"))
+	d, _ := readDesc(t, r, "wip_a")
+	if d == nil || d.Title != "A" || d.Body != "Commit body." || d.PR != 0 {
+		t.Fatalf("drafted file at %s = %+v", path, d)
+	}
+	editDesc(t, r, "wip_a", func(d *desc.Description) { d.Title = "Written locally"; d.Body = "Long description." })
+
+	mustRun(t, r, fake, "push")
+	if want := []string{"create wip_a -> main: Written locally | Long description."}; !slices.Equal(fake.calls, want) {
+		t.Errorf("gh calls = %q", fake.calls)
+	}
+	if d, _ = readDesc(t, r, "wip_a"); d.PR != 101 || d.Synced != d.Hash() {
+		t.Errorf("file after push = %+v", d)
+	}
+}
+
+func TestMarkRenameMovesDesc(t *testing.T) {
+	r := testrepo.New(t)
+	r.Commit("A\n\nFlapjack-Branch: old\n", "a.txt")
+	fake := &fakeGH{}
+	mustRun(t, r, fake, "push")
+	editDesc(t, r, "wip_old", func(d *desc.Description) { d.Body = "Keep me." })
+
+	mustRun(t, r, fake, "mark", "HEAD", "new")
+	if d, _ := readDesc(t, r, "wip_old"); d != nil {
+		t.Errorf("old file still exists: %+v", d)
+	}
+	d, _ := readDesc(t, r, "wip_new")
+	if d == nil || d.Body != "Keep me." || d.PR != 0 || d.Synced != "" {
+		t.Errorf("moved file = %+v", d)
 	}
 }

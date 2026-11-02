@@ -35,6 +35,12 @@ func TestSyncAfterSquashMerge(t *testing.T) {
 	if _, ok, _ := r.RefSHA("refs/heads/wip_a"); ok {
 		t.Errorf("local wip_a still exists")
 	}
+	if d, _ := readDesc(t, r, "wip_a"); d != nil {
+		t.Errorf("description file for merged wip_a still exists")
+	}
+	if d, _ := readDesc(t, r, "wip_b"); d == nil {
+		t.Errorf("description file for open wip_b was removed")
+	}
 	if want := []string{"set-base #102 -> main"}; !slices.Equal(fake.calls, want) {
 		t.Errorf("gh calls = %q, want %q", fake.calls, want)
 	}

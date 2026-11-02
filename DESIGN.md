@@ -84,10 +84,13 @@ flapjack does not run lint, type check or tests. The agent's instructions handle
 
 After the bottom PR(s) merge:
 
-1. `git fetch`.
-2. Find heads whose PRs are merged, starting from the bottom.
-3. `git rebase --onto <base> <top-merged-head-sha> <wip>`. This drops the merged commits even if GitHub squash-merged them.
-4. Retarget the next open PR to the base. Delete local branches for merged PRs.
+1. `git fetch origin <base>`. Only the base is fetched, so the PR branches' remote-tracking refs keep the values `fj push` leases against.
+2. Find heads whose PRs are merged, starting from the bottom and stopping at the first that isn't.
+3. Delete local branches for those PRs, unless checked out in a worktree.
+4. `git rebase --onto origin/<base> <top-merged-head-sha> <wip>`. This drops the merged commits even if GitHub squash-merged them. On conflicts, resolve, `git rebase --continue`, and run `fj sync` again.
+5. Retarget the bottom head's open PR to the base if it isn't already. This step runs even when nothing new merged, so a rerun after a conflict finishes the job.
+
+`fj sync` doesn't push; run `fj push` afterwards.
 
 ## Out of scope (for now)
 

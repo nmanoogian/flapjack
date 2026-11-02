@@ -1,0 +1,118 @@
+package cli
+
+import (
+	"flag"
+	"fmt"
+
+	"github.com/nmanoogian/flapjack/internal/gh"
+	"github.com/nmanoogian/flapjack/internal/stack"
+)
+
+func runSync(app *App, args []string) error {
+	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(fs.Output(), "usage: fj sync\n\nAfter the bottom PRs merge, rebases the WIP branch onto the base without them and retargets the next PR.")
+	}
+	if help, err := parseFlags(fs, args); help || err != nil {
+		return err
+	}
+	s, err := app.loadForRewrite()
+	if err != nil {
+		return err
+	}
+	// Fetch only the base so PR branches' remote-tracking refs, which back
+	// the push leases, keep their last-known values.
+	if _, err := app.Repo.Run("fetch", "--quiet", stack.Remote, s.Base); err != nil {
+		return err
+	}
+	if s, err = stack.Load(app.Repo); err != nil {
+		return err
+	}
+
+	merged, err := app.mergedHeads(s)
+	if err != nil {
+		return err
+	}
+	if len(merged) == 0 {
+		fmt.Fprintln(app.Out, "no merged PRs at the bottom of the stack")
+	} else {
+		if err := app.deleteLocalBranches(merged); err != nil {
+			return err
+		}
+		top := merged[len(merged)-1]
+		if err := app.Repo.RunAttached("rebase", "--onto", s.BaseRef, top.SHA, s.WIP); err != nil {
+			return fmt.Errorf("%w\nResolve the conflicts, run `git rebase --continue`, then run `fj sync` again to retarget PRs", err)
+		}
+		for _, h := range merged {
+			fmt.Fprintf(app.Out, "dropped merged %s (%s)\n", h.Name, h.Subject)
+		}
+		if s, err = stack.Load(app.Repo); err != nil {
+			return err
+		}
+	}
+
+	if err := app.retargetBottom(s); err != nil {
+		return err
+	}
+	if len(merged) > 0 && len(s.Heads) > 0 {
+		fmt.Fprintln(app.Out, "run `fj push` to update the PR branches")
+	}
+	return nil
+}
+
+// mergedHeads returns the heads at the bottom of the stack whose PRs are
+// merged, stopping at the first one that isn't.
+func (app *App) mergedHeads(s *stack.Stack) ([]stack.Head, error) {
+	var merged []stack.Head
+	for _, h := range s.Heads {
+		pr, err := app.GH.ForBranch(h.Branch)
+		if err != nil {
+			return nil, err
+		}
+		if pr == nil || pr.State != gh.StateMerged {
+			break
+		}
+		merged = append(merged, h)
+	}
+	return merged, nil
+}
+
+func (app *App) deleteLocalBranches(heads []stack.Head) error {
+	checkedOut, err := app.Repo.CheckedOutBranches()
+	if err != nil {
+		return err
+	}
+	for _, h := range heads {
+		if path, ok := checkedOut[h.Branch]; ok {
+			fmt.Fprintf(app.Out, "kept %s: checked out in %s\n", h.Branch, path)
+			continue
+		}
+		if _, ok, err := app.Repo.RefSHA("refs/heads/" + h.Branch); err != nil {
+			return err
+		} else if !ok {
+			continue
+		}
+		if _, err := app.Repo.Run("branch", "--delete", "--force", h.Branch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// retargetBottom points the bottom head's open PR at the base, which it
+// needs once the PRs below it have merged.
+func (app *App) retargetBottom(s *stack.Stack) error {
+	if len(s.Heads) == 0 {
+		return nil
+	}
+	bottom := s.Heads[0]
+	pr, err := app.GH.ForBranch(bottom.Branch)
+	if err != nil || pr == nil || pr.State != gh.StateOpen || pr.BaseRefName == s.Base {
+		return err
+	}
+	if err := app.GH.SetBase(pr.Number, s.Base); err != nil {
+		return err
+	}
+	fmt.Fprintf(app.Out, "retargeted PR #%d → %s\n", pr.Number, s.Base)
+	return nil
+}

@@ -37,6 +37,7 @@ var commands = []command{
 	{"mark", "make a commit the head of a PR, or rename a head", runMark},
 	{"unmark", "remove a head from the stack", runUnmark},
 	{"push", "update PR branches from their head commits and create or retarget PRs", runPush},
+	{"sync", "drop merged PRs from the bottom of the stack and rebase onto the base", runSync},
 }
 
 func Main(args []string) error {

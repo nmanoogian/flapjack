@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/nmanoogian/flapjack/internal/gh"
 	"github.com/nmanoogian/flapjack/internal/git"
 )
 
@@ -21,6 +22,7 @@ Commands:
 
 type App struct {
 	Repo git.Repo
+	GH   gh.Client
 	Out  io.Writer
 }
 
@@ -30,14 +32,16 @@ type command struct {
 	run     func(app *App, args []string) error
 }
 
-var commands []command
+var commands = []command{
+	{"status", "show the stack's heads, PRs and orphaned PRs", runStatus},
+}
 
 func Main(args []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	app := &App{Repo: git.Repo{Dir: dir}, Out: os.Stdout}
+	app := &App{Repo: git.Repo{Dir: dir}, GH: gh.CLI{Dir: dir}, Out: os.Stdout}
 	return app.Run(args)
 }
 

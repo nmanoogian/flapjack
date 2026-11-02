@@ -24,6 +24,8 @@ type PR struct {
 	BaseRefName string `json:"baseRefName"`
 	URL         string `json:"url"`
 	Title       string `json:"title"`
+	Additions   int    `json:"additions"`
+	Deletions   int    `json:"deletions"`
 	Body        string `json:"body"`
 }
 
@@ -42,7 +44,7 @@ type CLI struct {
 	Dir string
 }
 
-const prFields = "number,state,isDraft,headRefName,baseRefName,url,title,body"
+const prFields = "number,state,isDraft,headRefName,baseRefName,url,title,body,additions,deletions"
 
 func (c CLI) ListOpen() ([]PR, error) {
 	var prs []PR

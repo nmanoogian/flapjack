@@ -32,7 +32,7 @@ fj push
 
 | Command | What it does |
 |---|---|
-| `fj status [--json]` | Lists heads with their PR and remote state, then orphaned PRs (marked `!`). The JSON includes each head's `descPath` |
+| `fj status [--json \| --md]` | Lists heads with their PR and remote state, then orphaned PRs (marked `!`). `--json` includes each head's `descPath`. `--md` prints one `[PR 812](url) - Title (repo +a/-d)` line per PR, bottom to top |
 | `fj mark <rev> <name>` | Adds a `Flapjack-Branch: <name>` trailer to a commit, or renames an existing one |
 | `fj unmark <name>` | Removes a head. Its PR is left open and shows as orphaned |
 | `fj push [--dry-run] [--draft] [<name>...]` | Points PR branches at their heads, pushes them atomically with `--force-with-lease`, creates or retargets PRs |

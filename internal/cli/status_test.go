@@ -32,3 +32,23 @@ func TestStatus(t *testing.T) {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestStatusMarkdown(t *testing.T) {
+	r := testrepo.New(t)
+	r.Git("remote", "set-url", "origin", "git@github.com:acme/billing.git")
+	r.Commit("Add models\n\nFlapjack-Branch: models\n", "a.txt")
+	r.Commit("Add API\n\nFlapjack-Branch: api\n", "b.txt")
+	r.Commit("Add UI\n\nFlapjack-Branch: ui\n", "c.txt")
+	fake := &fakeGH{prs: []gh.PR{
+		{Number: 812, State: gh.StateOpen, HeadRefName: "wip_models", URL: "https://github.com/acme/billing/pull/812", Title: "Billing v3: models", Additions: 120, Deletions: 4},
+		{Number: 813, State: gh.StateOpen, HeadRefName: "wip_api", URL: "https://github.com/acme/billing/pull/813", Title: "Billing v3: API", Additions: 30},
+		{Number: 9, State: gh.StateOpen, HeadRefName: "wip_orphan", URL: "https://github.com/acme/billing/pull/9", Title: "Orphan"},
+	}}
+
+	got := mustRun(t, r, fake, "status", "--md")
+	want := "[PR 812](https://github.com/acme/billing/pull/812) - Billing v3: models (billing +120/-4)\n" +
+		"[PR 813](https://github.com/acme/billing/pull/813) - Billing v3: API (billing +30/-0)\n"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}

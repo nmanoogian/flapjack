@@ -2,8 +2,10 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 
@@ -48,8 +50,12 @@ type statusReport struct {
 func runStatus(app *App, args []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "print the stack as JSON")
+	asMarkdown := fs.Bool("md", false, "print one Markdown link per PR, bottom to top")
 	if help, err := parseFlags(fs, args); help || err != nil {
 		return err
+	}
+	if *asJSON && *asMarkdown {
+		return errors.New("--json and --md can't be used together")
 	}
 	s, err := stack.Load(app.Repo)
 	if err != nil {
@@ -82,7 +88,27 @@ func runStatus(app *App, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(report)
 	}
+	if *asMarkdown {
+		return app.printMarkdown(report)
+	}
 	printStatus(app, report)
+	return nil
+}
+
+// printMarkdown prints a line like
+// "[PR 812](https://…/pull/812) - Add models (repo +120/-4)" for each head
+// that has a PR. Heads without one and orphaned PRs are left out.
+func (app *App) printMarkdown(r statusReport) error {
+	url, err := app.Repo.Run("remote", "get-url", stack.Remote)
+	if err != nil {
+		return err
+	}
+	repo := strings.TrimSuffix(path.Base(strings.TrimSuffix(url, "/")), ".git")
+	for _, h := range r.Heads {
+		if pr := h.PR; pr != nil {
+			fmt.Fprintf(app.Out, "[PR %d](%s) - %s (%s +%d/-%d)\n", pr.Number, pr.URL, pr.Title, repo, pr.Additions, pr.Deletions)
+		}
+	}
 	return nil
 }
 

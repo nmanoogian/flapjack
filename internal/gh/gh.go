@@ -23,6 +23,8 @@ type PR struct {
 	HeadRefName string `json:"headRefName"`
 	BaseRefName string `json:"baseRefName"`
 	URL         string `json:"url"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
 }
 
 type Client interface {
@@ -33,13 +35,14 @@ type Client interface {
 	ForBranch(branch string) (*PR, error)
 	Create(head, base, title, body string, draft bool) (PR, error)
 	SetBase(number int, base string) error
+	SetDescription(number int, title, body string) error
 }
 
 type CLI struct {
 	Dir string
 }
 
-const prFields = "number,state,isDraft,headRefName,baseRefName,url"
+const prFields = "number,state,isDraft,headRefName,baseRefName,url,title,body"
 
 func (c CLI) ListOpen() ([]PR, error) {
 	var prs []PR
@@ -75,11 +78,16 @@ func (c CLI) Create(head, base, title, body string, draft bool) (PR, error) {
 	if err != nil {
 		return PR{}, fmt.Errorf("gh pr create: unexpected output %q", out)
 	}
-	return PR{Number: number, State: StateOpen, IsDraft: draft, HeadRefName: head, BaseRefName: base, URL: url}, nil
+	return PR{Number: number, State: StateOpen, IsDraft: draft, HeadRefName: head, BaseRefName: base, URL: url, Title: title, Body: body}, nil
 }
 
 func (c CLI) SetBase(number int, base string) error {
 	_, err := c.run("pr", "edit", strconv.Itoa(number), "--base", base)
+	return err
+}
+
+func (c CLI) SetDescription(number int, title, body string) error {
+	_, err := c.runInput(body, "pr", "edit", strconv.Itoa(number), "--title", title, "--body-file", "-")
 	return err
 }
 
@@ -95,8 +103,13 @@ func (c CLI) json(v any, args ...string) error {
 }
 
 func (c CLI) run(args ...string) (string, error) {
+	return c.runInput("", args...)
+}
+
+func (c CLI) runInput(stdin string, args ...string) (string, error) {
 	cmd := exec.Command("gh", args...)
 	cmd.Dir = c.Dir
+	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

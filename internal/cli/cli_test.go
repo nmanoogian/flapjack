@@ -41,7 +41,7 @@ func (f *fakeGH) ForBranch(branch string) (*gh.PR, error) {
 
 func (f *fakeGH) Create(head, base, title, body string, draft bool) (gh.PR, error) {
 	f.next++
-	pr := gh.PR{Number: 100 + f.next, State: gh.StateOpen, IsDraft: draft, HeadRefName: head, BaseRefName: base}
+	pr := gh.PR{Number: 100 + f.next, State: gh.StateOpen, IsDraft: draft, HeadRefName: head, BaseRefName: base, Title: title, Body: body}
 	f.prs = append(f.prs, pr)
 	f.calls = append(f.calls, fmt.Sprintf("create %s -> %s: %s | %s", head, base, title, body))
 	return pr, nil
@@ -54,6 +54,16 @@ func (f *fakeGH) SetBase(number int, base string) error {
 		}
 	}
 	f.calls = append(f.calls, fmt.Sprintf("set-base #%d -> %s", number, base))
+	return nil
+}
+
+func (f *fakeGH) SetDescription(number int, title, body string) error {
+	for i := range f.prs {
+		if f.prs[i].Number == number {
+			f.prs[i].Title, f.prs[i].Body = title, body
+		}
+	}
+	f.calls = append(f.calls, fmt.Sprintf("set-desc #%d: %s | %s", number, title, body))
 	return nil
 }
 

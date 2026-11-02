@@ -61,7 +61,7 @@ Known limit: prefixes can collide. If another WIP branch is named `<wip>_<someth
 
 ### `fj mark <rev> <name>` / `fj unmark <name>`
 
-Adds or removes the trailer on a WIP commit. This rewrites the WIP branch with a non-interactive rebase that runs `git commit --amend --no-edit --trailer ...` after the target commit. Refuses to run with a dirty worktree or an in-progress rebase.
+Adds or removes the trailer on a WIP commit. Marking a head again renames it. flapjack recreates the target commit and every commit after it with `git commit-tree`, keeping trees and authors, then moves the WIP branch with `git update-ref`. Only messages change, so there are no conflicts and uncommitted work is untouched. Refuses to run during a rebase, merge, cherry-pick or revert.
 
 ### `fj push [<name>...]`
 

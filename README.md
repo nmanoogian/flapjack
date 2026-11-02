@@ -32,12 +32,12 @@ fj push
 
 | Command | What it does |
 |---|---|
-| `fj status [--json]` | Lists heads with their PR and remote state, then orphaned PRs (marked `!`) |
+| `fj status [--json]` | Lists heads with their PR and remote state, then orphaned PRs (marked `!`). The JSON includes each head's `descPath` |
 | `fj mark <rev> <name>` | Adds a `Flapjack-Branch: <name>` trailer to a commit, or renames an existing one |
 | `fj unmark <name>` | Removes a head. Its PR is left open and shows as orphaned |
 | `fj push [--dry-run] [--draft] [<name>...]` | Points PR branches at their heads, pushes them atomically with `--force-with-lease`, creates or retargets PRs |
 | `fj sync` | After bottom PRs merge, rebases the WIP branch onto the base without them and retargets the next PR |
-| `fj desc path <name>` | Prints a head's description file, creating it from the open PR or the head commit if needed |
+| `fj desc path [<name>...]` | Prints description files for all heads (bottom to top) or the named ones, creating missing files from the open PR or the head commit |
 | `fj desc sync [--dry-run] [--prefer local\|remote] [<name>...]` | Syncs description files with GitHub in both directions |
 
 flapjack doesn't run lint, type checks or tests. Check each head (the `sha` fields in `fj status --json`) before `fj push`.
@@ -59,7 +59,8 @@ Introduces Plan, Price and Subscription models.
 `pr` and `synced` are managed by flapjack; edit the title and body.
 
 ```sh
-$EDITOR "$(fj desc path new-models)"   # write or edit a description
+$EDITOR "$(fj desc path new-models)"   # write or edit one description
+$EDITOR $(fj desc path)                 # open every description in the stack
 fj desc sync                            # push local edits, pull GitHub edits
 ```
 

@@ -32,6 +32,9 @@ type headStatus struct {
 	PRBase  string       `json:"prBase"`
 	PR      *gh.PR       `json:"pr"`
 	Remote  remoteStatus `json:"remote"`
+	// DescPath is where the head's description file lives. The file may not
+	// exist yet; `fj desc path` creates it.
+	DescPath string `json:"descPath"`
 }
 
 type statusReport struct {
@@ -65,9 +68,13 @@ func runStatus(app *App, args []string) error {
 		if err != nil {
 			return err
 		}
+		path, err := app.descPath(h.Branch)
+		if err != nil {
+			return err
+		}
 		report.Heads = append(report.Heads, headStatus{
 			Name: h.Name, Branch: h.Branch, SHA: h.SHA, Subject: h.Subject,
-			PRBase: s.PRBase(i), PR: prs.byBranch[h.Branch], Remote: remote,
+			PRBase: s.PRBase(i), PR: prs.byBranch[h.Branch], Remote: remote, DescPath: path,
 		})
 	}
 	if *asJSON {

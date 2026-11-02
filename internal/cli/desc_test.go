@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"slices"
 	"strings"
@@ -113,6 +114,49 @@ func TestDescSync(t *testing.T) {
 	}
 	if d, _ = readDesc(t, r, "wip_a"); d.Synced != d.Hash() {
 		t.Errorf("sync state not recorded: %+v", d)
+	}
+}
+
+func TestDescPathAllHeads(t *testing.T) {
+	r := testrepo.New(t)
+	r.Commit("A\n\nFlapjack-Branch: a\n", "a.txt")
+	r.Commit("B\n\nFlapjack-Branch: b\n", "b.txt")
+	r.Commit("C\n\nFrom commit c.\n\nFlapjack-Branch: c\n", "c.txt")
+	fake := &fakeGH{}
+	mustRun(t, r, fake, "push", "a", "b")
+	editDesc(t, r, "wip_a", func(d *desc.Description) { d.Body = "Local edit." })
+	_, pathB := readDesc(t, r, "wip_b")
+	if err := os.Remove(pathB); err != nil {
+		t.Fatal(err)
+	}
+	fake.prs[1].Body = "From PR b."
+
+	out := mustRun(t, r, fake, "desc", "path")
+	_, pathA := readDesc(t, r, "wip_a")
+	_, pathC := readDesc(t, r, "wip_c")
+	if want := pathA + "\n" + pathB + "\n" + pathC + "\n"; out != want {
+		t.Errorf("out = %q, want %q", out, want)
+	}
+	if d, _ := readDesc(t, r, "wip_a"); d.Body != "Local edit." {
+		t.Errorf("existing file overwritten: %+v", d)
+	}
+	if d, _ := readDesc(t, r, "wip_b"); d.Body != "From PR b." || d.PR != 102 {
+		t.Errorf("file from PR = %+v", d)
+	}
+	if d, _ := readDesc(t, r, "wip_c"); d.Body != "From commit c." || d.PR != 0 {
+		t.Errorf("file from commit = %+v", d)
+	}
+
+	if out := mustRun(t, r, fake, "desc", "path", "c", "a"); out != pathA+"\n"+pathC+"\n" {
+		t.Errorf("named heads out = %q", out)
+	}
+
+	var report statusReport
+	if err := json.Unmarshal([]byte(mustRun(t, r, fake, "status", "--json")), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Heads[1].DescPath != pathB {
+		t.Errorf("status descPath = %q, want %q", report.Heads[1].DescPath, pathB)
 	}
 }
 

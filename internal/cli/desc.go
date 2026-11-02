@@ -16,7 +16,7 @@ const descUsage = `usage: fj desc <command>
 PR titles and descriptions live in .git/flapjack/prs/<branch>.md.
 
 Commands:
-  path <name>    print the description file for a head, creating it if needed
+  path [<name>...]  print description files for heads (all by default), creating missing ones
   sync [<name>...]  sync description files with GitHub in both directions
 `
 
@@ -38,53 +38,66 @@ func runDesc(app *App, args []string) error {
 func runDescPath(app *App, args []string) error {
 	fs := flag.NewFlagSet("desc path", flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "usage: fj desc path <name>\n\nPrints the description file for a head. If it doesn't exist, creates it from the open PR, or from the head commit's message if there's no PR yet.")
+		fmt.Fprintln(fs.Output(), "usage: fj desc path [<name>...]\n\nPrints the description file for each head, bottom to top, or for just the named heads. Missing files are created from the open PR, or from the head commit's message if there's no PR yet.")
 	}
 	if help, err := parseFlags(fs, args); help || err != nil {
 		return err
-	}
-	if fs.NArg() != 1 {
-		fs.Usage()
-		return errors.New("desc path takes a name")
 	}
 	s, err := stack.Load(app.Repo)
 	if err != nil {
 		return err
 	}
-	i := s.HeadIndex(fs.Arg(0))
-	if i < 0 {
-		return fmt.Errorf("no head named %q", fs.Arg(0))
+	if len(s.Heads) == 0 {
+		return fmt.Errorf("no heads in %s; mark one with `fj mark <rev> <name>`", s.WIP)
 	}
-	h := s.Heads[i]
-	path, err := app.descPath(h.Branch)
+	selected, err := selectHeads(s, fs.Args())
 	if err != nil {
 		return err
 	}
-	existing, err := desc.Read(path)
-	if err != nil {
-		return err
-	}
-	if existing == nil {
-		d, err := app.initialDesc(s, h)
+	paths := make([]string, len(selected))
+	var missing []stack.Head
+	for j, i := range selected {
+		h := s.Heads[i]
+		if paths[j], err = app.descPath(h.Branch); err != nil {
+			return err
+		}
+		existing, err := desc.Read(paths[j])
 		if err != nil {
 			return err
 		}
-		if err := desc.Write(path, d); err != nil {
-			return err
+		if existing == nil {
+			missing = append(missing, h)
 		}
 	}
-	fmt.Fprintln(app.Out, path)
+	if len(missing) > 0 {
+		prs, err := app.loadPRs(s, missing)
+		if err != nil {
+			return err
+		}
+		for _, h := range missing {
+			d, err := app.initialDesc(h, prs.byBranch[h.Branch])
+			if err != nil {
+				return err
+			}
+			path, err := app.descPath(h.Branch)
+			if err != nil {
+				return err
+			}
+			if err := desc.Write(path, d); err != nil {
+				return err
+			}
+		}
+	}
+	for _, path := range paths {
+		fmt.Fprintln(app.Out, path)
+	}
 	return nil
 }
 
 // initialDesc returns the open PR's description, or one built from the head
 // commit's message if the head has no open PR.
-func (app *App) initialDesc(s *stack.Stack, h stack.Head) (*desc.Description, error) {
-	prs, err := app.loadPRs(s, []stack.Head{h})
-	if err != nil {
-		return nil, err
-	}
-	if pr := prs.byBranch[h.Branch]; pr != nil && pr.State == gh.StateOpen {
+func (app *App) initialDesc(h stack.Head, pr *gh.PR) (*desc.Description, error) {
+	if pr != nil && pr.State == gh.StateOpen {
 		return remoteDesc(pr), nil
 	}
 	msg, err := stack.Message(app.Repo, h.SHA)

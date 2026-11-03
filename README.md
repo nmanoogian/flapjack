@@ -36,7 +36,7 @@ fj push
 | `fj mark <rev> <name>` | Adds a `Flapjack-Branch: <name>` trailer to a commit, or renames an existing one |
 | `fj unmark <name>` | Removes a head. Its PR is left open and shows as orphaned |
 | `fj push [--dry-run] [--draft] [<name>...]` | Points PR branches at their heads, pushes them atomically with `--force-with-lease`, creates or retargets PRs |
-| `fj sync` | After bottom PRs merge, rebases the WIP branch onto the base without them and retargets the next PR |
+| `fj sync [--restack]` | After bottom PRs merge, rebases the WIP branch onto the base without them and retargets the next PR. `--restack` rebases onto `origin/<base>` even if nothing merged |
 | `fj desc path [<name>...]` | Prints description files for all heads (bottom to top) or the named ones, creating missing files from the open PR or the head commit |
 | `fj desc sync [--dry-run] [--prefer local\|remote] [<name>...]` | Syncs description files with GitHub in both directions |
 

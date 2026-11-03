@@ -14,8 +14,10 @@ import (
 func runSync(app *App, args []string) error {
 	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "usage: fj sync\n\nAfter the bottom PRs merge, rebases the WIP branch onto the base without them and retargets the next PR.")
+		fmt.Fprintln(fs.Output(), "usage: fj sync [flags]\n\nAfter the bottom PRs merge, rebases the WIP branch onto the base without them and retargets the next PR.\n\nFlags:")
+		fs.PrintDefaults()
 	}
+	restack := fs.Bool("restack", false, "rebase onto origin/<base> even if no PRs merged")
 	if help, err := parseFlags(fs, args); help || err != nil {
 		return err
 	}
@@ -36,19 +38,27 @@ func runSync(app *App, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(merged) == 0 {
-		fmt.Fprintln(app.Out, "no merged PRs at the bottom of the stack")
-	} else {
+	switch {
+	case len(merged) > 0:
 		if err := app.cleanUpMerged(merged); err != nil {
 			return err
 		}
 		top := merged[len(merged)-1]
-		if err := app.Repo.RunAttached("rebase", "--onto", s.BaseRef, top.SHA, s.WIP); err != nil {
-			return fmt.Errorf("%w\nResolve the conflicts, run `git rebase --continue`, then run `fj sync` again to retarget PRs", err)
+		if err := app.rebase(s.BaseRef, top.SHA, s.WIP); err != nil {
+			return err
 		}
 		for _, h := range merged {
 			fmt.Fprintf(app.Out, "dropped merged %s (%s)\n", h.Name, h.Subject)
 		}
+	case *restack:
+		if err := app.rebase(s.BaseRef, s.BaseRef, s.WIP); err != nil {
+			return err
+		}
+		fmt.Fprintf(app.Out, "rebased %s onto %s/%s\n", s.WIP, stack.Remote, s.Base)
+	default:
+		fmt.Fprintln(app.Out, "no merged PRs at the bottom of the stack")
+	}
+	if len(merged) > 0 || *restack {
 		if s, err = stack.Load(app.Repo); err != nil {
 			return err
 		}
@@ -57,8 +67,17 @@ func runSync(app *App, args []string) error {
 	if err := app.retargetBottom(s); err != nil {
 		return err
 	}
-	if len(merged) > 0 && len(s.Heads) > 0 {
+	if (len(merged) > 0 || *restack) && len(s.Heads) > 0 {
 		fmt.Fprintln(app.Out, "run `fj push` to update the PR branches")
+	}
+	return nil
+}
+
+// rebase replays upstream..branch onto onto. On conflicts, git stops the
+// rebase and the user finishes it.
+func (app *App) rebase(onto, upstream, branch string) error {
+	if err := app.Repo.RunAttached("rebase", "--onto", onto, upstream, branch); err != nil {
+		return fmt.Errorf("%w\nResolve the conflicts, run `git rebase --continue`, then run `fj sync` again to retarget PRs", err)
 	}
 	return nil
 }

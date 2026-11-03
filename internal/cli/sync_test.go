@@ -2,6 +2,7 @@ package cli
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/nmanoogian/flapjack/internal/gh"
@@ -66,5 +67,39 @@ func TestSyncWithNothingMerged(t *testing.T) {
 	}
 	if got := r.Git("rev-parse", "wip"); got != before {
 		t.Errorf("WIP branch moved")
+	}
+}
+
+func TestSyncRestack(t *testing.T) {
+	r := testrepo.New(t)
+	r.Commit("A\n\nFlapjack-Branch: a\n", "a.txt")
+	r.Commit("B\n\nFlapjack-Branch: b\n", "b.txt")
+	fake := &fakeGH{}
+	mustRun(t, r, fake, "push")
+
+	other := testrepo.Clone(t, r)
+	other.Commit("Unrelated change on main", "main.txt")
+	other.Git("push", "--quiet", "origin", "main")
+	fake.calls = nil
+
+	if out := mustRun(t, r, fake, "sync"); out != "no merged PRs at the bottom of the stack\n" {
+		t.Errorf("sync without --restack: %q", out)
+	}
+	if got := r.Git("rev-parse", "wip~2"); got == r.Git("rev-parse", "origin/main") {
+		t.Fatal("sync without --restack rebased the stack")
+	}
+
+	out := mustRun(t, r, fake, "sync", "--restack")
+	if want := "rebased wip onto origin/main\nrun `fj push` to update the PR branches\n"; out != want {
+		t.Errorf("out = %q, want %q", out, want)
+	}
+	if got := r.Git("log", "--format=%s", "origin/main..wip"); got != "B\nA" {
+		t.Errorf("WIP commits after restack:\n%s", got)
+	}
+	if got := r.Git("rev-parse", "wip~2"); got != r.Git("rev-parse", "origin/main") {
+		t.Errorf("WIP is not on top of origin/main")
+	}
+	if got := mustRun(t, r, fake, "status"); !strings.Contains(got, "stale") || fake.calls != nil {
+		t.Errorf("status after restack:\n%s\ncalls %q", got, fake.calls)
 	}
 }
